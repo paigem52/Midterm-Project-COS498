@@ -1,28 +1,66 @@
+//--------------------------------------------------------------------
+//Required Modules
+//--------------------------------------------------------------------
 const express = require('express');
 const hbs = require('hbs');
 const path = require('path');
 const app = express();
+const session = require('express-session');  //No longer need cookie-parser
+
+//Interface for module
 const PORT = process.env.PORT || 3000;
+
+//--------------------------------------------------------------------
+//ADD SOMETHING HERE
+//--------------------------------------------------------------------
 
 //In-memory storage
 const users = [];
+let nextId = 1;
 //const comments = [];
+const sessions = [];
 
+//--------------------------------------------------------------------
 //Set up Handlebars
+//--------------------------------------------------------------------
 app.set('view engine', 'hbs');
 app.set('views', path.join(__dirname, 'views'));
 
 //Register partials directory
 hbs.registerPartials(path.join(__dirname, 'views', 'partials'));
 
-// Middleware
+//--------------------------------------------------------------------
+//Middleware
+//--------------------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Nginx will handle static file serving --> app.use(express.static('public'));
+//Insecure setup
+app.use(session({
+    secret: 'wildwest',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true if using HTTPS
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 
-// API Routes-- > don't include '/api' in routes because nginx strips it when forwarding
-// nginx receives: http://localhost/api/users & forwards to: http://backend-nodejs:3000/users (without /api)
+//Login State to help nav partials
+app.use((req, res, next) => {
+    res.locals.isLoggedIn = req.session.isLoggedIn || false;
+    res.locals.username = req.session.username || null;
+    next();
+});
+
+//--------------------------------------------------------------------
+//Health/Test Routes
+
+/* Nginx will handle static file serving --> app.use(express.static('public'));
+    API Routes-- > don't include '/api' in routes because nginx strips it when forwarding
+    nginx receives: http://localhost/api/users & forwards to: http://backend-nodejs:3000/users (without /api)*/
+
+//--------------------------------------------------------------------
 
 app.get('/health', (req, res) => {
     res.json({ 
@@ -39,17 +77,44 @@ app.get('/test', (req, res) => {
   });
 });
 
-// Dummy data until POST requests and cookies
+// Dummy data until POST requests and cookies- TEMPORARY
 const comments = [
     { author: 'Steve', text: 'Howdy!', createdAt: new Date().toLocaleString() },
     { author: 'Bob', text: 'Yeehaw!', createdAt: new Date().toLocaleString() },
 ];
 
-// GET Routes
+//--------------------------------------------------------------------
+//GET Routes
+//--------------------------------------------------------------------
+
 //Homepage
 app.get('/', (req, res) => {
+   
+    //Guest object to act as default if there is no session
+     let user = { 
+        name: "Guest",
+        isLoggedIn: false,
+        loginTime: null,
+        visitCount: 0
+    }; 
+
+    // Check if user is logged in via session
+    if (req.session.isLoggedIn) {
+        user = {
+            name: req.session.username,
+            isLoggedIn: true,
+            loginTime: req.session.loginTime,
+            visitCount: req.session.visitCount || 0
+        };
+        
+        // Increment visit count
+        req.session.visitCount = (req.session.visitCount || 0) + 1;
+    }
+   
     res.render('home', {
-        title: 'Welcome to Wild West Forum'});
+        title: 'Welcome to Wild West Forum', 
+        user: user
+    });
 });
 
 //Registration page
@@ -64,13 +129,152 @@ app.get('/login', (req, res) => {
 
 // Comments page
 app.get('/comments', (req, res) => {
-    res.render('comments', { title: 'Comments', comments });
+    // Default user is guest
+    let user = {
+        name: "Guest",
+        isLoggedIn: false
+    };
+
+    // If logged in, use session info
+    if (req.session.isLoggedIn) {
+        user = {
+            name: req.session.username,
+            isLoggedIn: true
+        };
+    }
+    res.render('comments', { title: 'Comments', 
+        comments,
+        user 
+    });
 });
 
 // New comment form
 app.get('/comment/new', (req, res) => {
-    // TEMPORARY UNTIL COOKIES
-    res.render('new-comment', { title: 'New Comment', message: 'Login required to post comments.' });
+    let user = { name: "Guest", isLoggedIn: false };
+    if (req.session.isLoggedIn) {
+        user = { name: req.session.username, isLoggedIn: true };
+    }
+
+    res.render('new-comment', { 
+        title: 'New Comment',
+        user
+    });
+});
+
+
+//--------------------------------------------------------------------
+//POST Routes
+//--------------------------------------------------------------------
+
+//Register new user
+app.post('/register', (req,res) => {
+    const { username, password } = req.body;
+
+    //Validiate information
+    if (!username || !password) {
+        return res.status(400).json({
+            error: 'Username and password are required'
+        });
+    }
+
+    //Make sure username and password have not been used?
+    const existingUser = users.find(u => u.username === username);
+    if (existingUser) {
+        return res.status(409).json({
+            error: 'Username already exists'
+        });
+    }
+
+    //Create new user
+    const newUser = {
+        id: nextId++,
+        username,
+        password,
+        createdAt: new Date().toISOString()
+    };
+
+    users.push(newUser);
+
+    //Redirect to login page after registration
+
+    res.redirect('/login');
+
+});
+
+//Login
+app.post('/login', (req, res) => {
+
+    //if works, authenticate session cookie!
+    //Make sure username and password are correct/ exists
+    
+    const username = req.body.username;
+    const password = req.body.password;
+
+    //Retrieve specific user
+    const user = users.find( u => u.username === username && u.password === password);
+    
+    // Simple authentication (in production, use proper password hashing)
+    if (user) {
+        // Set session data
+        req.session.isLoggedIn = true;
+        req.session.username = user.username;
+        req.session.loginTime = new Date().toISOString();
+        req.session.visitCount = 0;
+        
+        console.log(`User ${username} logged in at ${req.session.loginTime}`);
+        res.redirect('/');
+    } else {
+        res.redirect('/login?error=1');
+    }
+});
+
+//Logout
+app.post('/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            console.log('Error destroying session:', err);
+            res.redirect('/');
+        }
+    
+        console.log(`User ${username} logged out.`);
+        res.clearCookie('connect.sid');   //Clear session cookie
+        res.redirect('/login'); //Redirect to login page
+
+    });
+
+});
+    
+
+//Comment
+app.post('/comments', (req, res) => {
+    //Make sure flag and valid session object REVIEW
+
+    //Check if user is logged in
+    if (!req.session.isLoggedIn) {
+        return res.render('login', { error: 'Please log in to post comments.' });
+    }
+
+    const { text } = req.body;
+    if (!text || text.trim() === '') {
+        return res.render('new-comment', { 
+            error: 'Comment cannot be empty.',
+             user: { name: req.session.username, isLoggedIn: true } // Pass user info
+        });
+    }
+
+    comments.push({
+        author: req.session.username,
+        text,
+        createdAt: new Date().toLocaleString()
+    });
+
+    res.render('comments', {
+        title: 'Comments',
+        comments,
+        user: { name: req.session.username, isLoggedIn: true },
+        message: 'Comment added.'
+    });
+   // res.redirect('/comments'); Do not want a page reload
 });
 
 // Start server

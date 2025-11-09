@@ -1,11 +1,26 @@
 <!-- NavBar has all GET requests (required pages) -->
 <header>
-    <nav>
-	<a href="/">Home</a> |
-	<a href="/register">Register</a> |
-	<a href="/login">Login</a> |
+  <nav>
+	<!-- Always show Home and Comment links -->
+    <a href="/">Home</a> |
 	<a href="/comments">Comments</a> |
-	<a href="/comment/new">New Comment</a>
-    </nav>
+    {{#if isLoggedIn}}
+
+	<!-- Show when user is logged in -->
+      <span>Welcome, {{username}}!</span> |
+	  <a href="/comment/new">New Comment</a> |
+
+	  <!-- Logout button triggers-->
+      <form action="/logout" method="POST" style="display:inline;">
+        <button type="submit">Logout</button>
+      </form> 
+
+    {{else}}
+	 <!-- Show when user is not logged in-->
+      <a href="/register">Register</a> |
+      <a href="/login">Login</a> |
+      
+    {{/if}}
+  </nav>
 </header>
 
