@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 //In-memory storage
 const users = [];
 let nextId = 1;
-//const comments = [];
+const comments = [];
 const sessions = [];
 
 //--------------------------------------------------------------------
@@ -76,12 +76,6 @@ app.get('/test', (req, res) => {
     message: 'If you see this, Handlebars is working properly.'
   });
 });
-
-// Dummy data until POST requests and cookies- TEMPORARY
-const comments = [
-    { author: 'Steve', text: 'Howdy!', createdAt: new Date().toLocaleString() },
-    { author: 'Bob', text: 'Yeehaw!', createdAt: new Date().toLocaleString() },
-];
 
 //--------------------------------------------------------------------
 //GET Routes
@@ -230,6 +224,9 @@ app.post('/login', (req, res) => {
 
 //Logout
 app.post('/logout', (req, res) => {
+    //Store username before session is destroyed to avoid 502Err / Undefined User Err
+    const username = req.session.username;
+
     req.session.destroy((err) => {
         if (err) {
             console.log('Error destroying session:', err);
@@ -281,3 +278,17 @@ app.post('/comments', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+
+
+
+/*
+Things I'd like to change
+welcome user where login is? 
+Add Register message new user created
+change order so comments is last?
+remove exclamation mark from no comments yet
+
+what's left to do
+change json errors to error messages
+*/
