@@ -8,7 +8,7 @@ const app = express();
 const session = require('express-session');  //No longer need cookie-parser
 
 //Interface for module
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3498;
 
 //--------------------------------------------------------------------
 //In-Memory Storage
